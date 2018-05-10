@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-
-	"github.com/k0kubun/pp"
 )
 
 const datasetDir = "./"

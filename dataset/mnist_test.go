@@ -7,13 +7,24 @@ import (
 )
 
 func TestHelloWorld(t *testing.T) {
-	// t.Fatal("not implemented")
 
-	mnist, err := LoadMnist(true, true, false)
+	mnist, err := LoadMnist(false, false, false)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(len(mnist.TrainImg))
-	fmt.Println(len(mnist.TrainImg[0]))
+	for _, number := range mnist.TrainImg2d {
+		for _, bytes := range number {
+			for _, b := range bytes {
+				if b == 0 {
+					fmt.Print("  ")
+				} else {
+					fmt.Print(" *")
+				}
+			}
+			fmt.Println("|")
+		}
+		break
+		fmt.Println()
+	}
 }
