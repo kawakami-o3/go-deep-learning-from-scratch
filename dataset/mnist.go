@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 )
 
-const datasetDir = "./"
+const datasetDir = "../dataset/"
 const saveFile = datasetDir + "mnist.pkl"
 const urlBase = "http://yann.lecun.com/exdb/mnist/"
 
@@ -107,7 +107,7 @@ func loadLabel(fileName string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	data = data[16:]
+	data = data[8:]
 
 	fmt.Println("Done")
 
