@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/rand"
 
 	"gorgonia.org/tensor"
 
@@ -266,6 +267,13 @@ type TwoLayerNet struct {
 	W1, b1, W2, b2 *tensor.Dense
 }
 
+func gaussian() float64 {
+	// https://en.wikipedia.org/wiki/Normal_distribution
+	x := rand.Float64()
+	y := rand.Float64()
+	return math.Sqrt(-1*math.Log(x)) * math.Cos(2*math.Pi*y)
+}
+
 func randomDense(dims ...int) *tensor.Dense {
 	total := 1
 	for _, i := range dims {
@@ -274,7 +282,8 @@ func randomDense(dims ...int) *tensor.Dense {
 	data := []float64{}
 	for i := 0; i < total; i++ {
 		//data = append(data, float64(total)*rand.Float64())
-		data = append(data, 1.0)
+		data = append(data, gaussian())
+		//data = append(data, 1.0) // debug
 	}
 
 	return tensor.New(tensor.WithShape(dims...), tensor.WithBacking(data))
@@ -499,22 +508,23 @@ func (this *TwoLayerNet) MulScalar(n float64) {
 }
 
 func randomBatchMask(limit, size int) []int {
+	store := map[int]int{}
+	for len(store) < size {
+		i := rand.Intn(limit)
+		store[i] = i
+	}
+	ret := []int{}
+	for i, _ := range store {
+		ret = append(ret, i)
+	}
+
 	/*
-		store := map[int]int{}
-		for len(store) < size {
-			i := rand.Intn(limit)
-			store[i] = i
-		}
+		// for debug
 		ret := []int{}
-		for i, _ := range store {
+		for i := 0; i < size; i++ {
 			ret = append(ret, i)
 		}
 	*/
-
-	ret := []int{}
-	for i := 0; i < size; i++ {
-		ret = append(ret, i)
-	}
 	return ret
 }
 
@@ -527,21 +537,13 @@ func byte2Float64(bs []byte) []float64 {
 }
 
 func runTwoLayerNet() {
-	//pp.Println(NewTwoLayerNet(0, 0, 0, 0.01))
-	/*
-		y := tensor.New(tensor.WithShape(4, 2), tensor.WithBacking([]float64{1, 2, 3, 4, 4, 3, 2, 1}))
-		t := tensor.New(tensor.WithShape(4, 2), tensor.WithBacking([]float64{1, 2, 3, 4, 4, 3, 2, 1}))
-		fmt.Println(t)
-		//fmt.Println(sigmoid(t))
-		//fmt.Println(t.At(3, 1))
-
-		pp.Println(crossEntropyErrorTensor(y, t))
-	*/
-
 	mnist, _ := dataset.LoadMnist(true, true, true)
+
 	// Hyper Prameters
+	//itersNum := 100
 	itersNum := 10000
 	trainSize := len(mnist.TrainImgNormalized)
+	//batchSize := 10
 	batchSize := 100
 	learningRate := 0.1
 
@@ -563,6 +565,12 @@ func runTwoLayerNet() {
 		tBatch := tensor.New(tensor.WithShape(batchSize, 10), tensor.WithBacking(tBatchData))
 
 		grad := network.numericalGradient(xBatch, tBatch)
+		/*
+			fmt.Println("W1:", grad.W1)
+			fmt.Println("b1:", grad.b1)
+			fmt.Println("W2:", grad.W2)
+			fmt.Println("b2:", grad.b2)
+		*/
 
 		grad.MulScalar(-learningRate)
 		network.Add(grad)
