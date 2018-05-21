@@ -26,8 +26,8 @@ var keyFile = func() map[string]string {
 const (
 	//trainNum = 60000
 	//testNum  = 10000
-	imgSize  = 784
-	edgeSize = 28
+	ImgSize  = 784
+	EdgeSize = 28
 )
 
 type Mnist struct {
@@ -140,8 +140,8 @@ func loadImg(fileName string) ([][]byte, error) {
 	bytes = bytes[16:]
 	data := [][]byte{}
 	for len(bytes) > 0 {
-		data = append(data, bytes[0:imgSize])
-		bytes = bytes[imgSize:]
+		data = append(data, bytes[0:ImgSize])
+		bytes = bytes[ImgSize:]
 	}
 
 	fmt.Println("Done")
@@ -224,8 +224,8 @@ func reshapeBytes(bs [][]byte) [][][]byte {
 	for _, bytes := range bs {
 		img := [][]byte{}
 		for len(bytes) > 0 {
-			img = append(img, bytes[0:edgeSize])
-			bytes = bytes[edgeSize:]
+			img = append(img, bytes[0:EdgeSize])
+			bytes = bytes[EdgeSize:]
 		}
 		ret = append(ret, img)
 	}
@@ -237,8 +237,8 @@ func reshapeFloats(fs [][]float64) [][][]float64 {
 	for _, floats := range fs {
 		img := [][]float64{}
 		for len(floats) > 0 {
-			img = append(img, floats[0:edgeSize])
-			floats = floats[edgeSize:]
+			img = append(img, floats[0:EdgeSize])
+			floats = floats[EdgeSize:]
 		}
 		ret = append(ret, img)
 	}
@@ -255,6 +255,7 @@ func (this *Mnist) reshapeImg() {
 	}
 }
 
+// normalize=True, flatten=True, one_hot_label=False
 func LoadMnist(normalize, flatten, oneHotLabel bool) (*Mnist, error) {
 	mnist := &Mnist{}
 
