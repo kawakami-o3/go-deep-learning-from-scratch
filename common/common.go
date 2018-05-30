@@ -2,6 +2,7 @@ package common
 
 import (
 	"math"
+	"math/rand"
 
 	"gorgonia.org/tensor"
 )
@@ -76,4 +77,49 @@ func CrossEntropyError(y, t *tensor.Dense) float64 {
 		sum += math.Log(yij.(float64) + delta)
 	}
 	return -sum / float64(batchSize)
+}
+
+func NumericalGradient(f func(*tensor.Dense) float64, x *tensor.Dense) *tensor.Dense {
+	h := 1e-4
+
+	grad := x.Clone().(*tensor.Dense)
+
+	it := x.Iterator()
+	for !it.Done() {
+		i, _ := it.Next()
+
+		tmpVal := x.Get(i).(float64)
+
+		x.Set(i, tmpVal+h)
+		fxh1 := f(x)
+
+		x.Set(i, tmpVal-h)
+		fxh2 := f(x)
+
+		grad.Set(i, (fxh1-fxh2)/(2*h))
+		x.Set(i, tmpVal)
+	}
+	return grad
+}
+
+func gaussian() float64 {
+	// https://en.wikipedia.org/wiki/Normal_distribution
+	x := rand.Float64()
+	y := rand.Float64()
+	return math.Sqrt(-1*math.Log(x)) * math.Cos(2*math.Pi*y)
+}
+
+func RandomDense(dims ...int) *tensor.Dense {
+	total := 1
+	for _, i := range dims {
+		total *= i
+	}
+	data := []float64{}
+	for i := 0; i < total; i++ {
+		//data = append(data, float64(total)*rand.Float64())
+		data = append(data, gaussian())
+		//data = append(data, 1.0) // debug
+	}
+
+	return tensor.New(tensor.WithShape(dims...), tensor.WithBacking(data))
 }

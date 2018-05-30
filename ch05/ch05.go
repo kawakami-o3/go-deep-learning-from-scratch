@@ -205,6 +205,123 @@ func (this *SoftmaxWithLoss) backward(dout float64) *tensor.Dense {
 	return dx
 }
 
+type Layer interface {
+	forward(x *tensor.Dense) *tensor.Dense
+	backward(dout *tensor.Dense) *tensor.Dense
+}
+
+type TwoLayerNet struct {
+	W1, b1, W2, b2 *tensor.Dense
+	layers         []Layer
+	lastLayer      *SoftmaxWithLoss
+
+	affine1Idx, affine2Idx int
+}
+
+// wightInitStd = 0.01
+func NewTwoLayerNet(inputSize, hiddenSize, outputSize int, weightInitStd float64) *TwoLayerNet {
+	ret := &TwoLayerNet{}
+
+	ret.W1 = common.RandomDense(inputSize, hiddenSize)
+	ret.b1 = common.RandomDense(hiddenSize)
+	ret.W2 = common.RandomDense(hiddenSize, outputSize)
+	ret.b2 = common.RandomDense(outputSize)
+
+	ret.W1, _ = ret.W1.MulScalar(weightInitStd, false)
+	ret.b1.Zero()
+	ret.W2, _ = ret.W2.MulScalar(weightInitStd, false)
+	ret.b2.Zero()
+
+	// layers
+	ret.layers = []Layer{}
+
+	layer := Layer(NewAffine(ret.W1, ret.b1))
+
+	ret.layers = append(ret.layers, layer)
+
+	/*
+			NewAffine(ret.W1, ret.b1).(*Layer),
+			&Relu{},
+			NewAffine(ret.W2, ret.b2),
+		}
+	*/
+	ret.affine1Idx = 0
+	ret.affine2Idx = 2
+
+	ret.lastLayer = &SoftmaxWithLoss{}
+
+	return ret
+}
+
+func (this *TwoLayerNet) predict(x *tensor.Dense) *tensor.Dense {
+	for _, layer := range this.layers {
+		x = layer.forward(x)
+	}
+	return x
+}
+
+func (this *TwoLayerNet) loss(x, t *tensor.Dense) float64 {
+	y := this.predict(x)
+	return this.lastLayer.forward(y, t)
+}
+
+func (this *TwoLayerNet) accuracy(x, t *tensor.Dense) float64 {
+	y := this.predict(x)
+	ya, _ := y.Argmax(1)
+	ta, _ := t.Argmax(1)
+
+	sum := 0
+	size := 0
+	it := ya.Iterator()
+	for !it.Done() {
+		i, _ := it.Next()
+		yi := ya.Get(i).(float64)
+		ti := ta.Get(i).(float64)
+
+		if yi == ti {
+			sum++
+		}
+		size++
+	}
+	return float64(sum) / float64(size)
+}
+
+func (this *TwoLayerNet) numericalGradient(x, t *tensor.Dense) *TwoLayerNet {
+	lossW := func(_ *tensor.Dense) float64 {
+		return this.loss(x, t)
+	}
+
+	grads := &TwoLayerNet{}
+
+	grads.W1 = common.NumericalGradient(lossW, this.W1)
+	grads.b1 = common.NumericalGradient(lossW, this.b1)
+	grads.W2 = common.NumericalGradient(lossW, this.W2)
+	grads.b2 = common.NumericalGradient(lossW, this.b2)
+	return grads
+}
+
+func (this *TwoLayerNet) gradient(x, t *tensor.Dense) *TwoLayerNet {
+	// forward
+	this.loss(x, t)
+
+	// backward
+	doutInit := 1.0
+	dout := this.lastLayer.backward(doutInit)
+
+	for i := 0; i < len(this.layers); i++ {
+		idx := len(this.layers) - 1 - i
+		dout = this.layers[idx].backward(dout)
+	}
+
+	grads := &TwoLayerNet{}
+
+	grads.W1 = this.layers[this.affine1Idx].(*Affine).dW
+	grads.b1 = this.layers[this.affine1Idx].(*Affine).db
+	grads.W2 = this.layers[this.affine2Idx].(*Affine).dW
+	grads.b2 = this.layers[this.affine2Idx].(*Affine).db
+	return grads
+}
+
 func runSigmoid() {
 	dY := tensor.New(tensor.WithShape(2, 3), tensor.WithBacking([]float64{1, 2, 3, 4, 5, 6}))
 
