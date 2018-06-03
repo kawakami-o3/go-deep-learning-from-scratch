@@ -123,3 +123,23 @@ func RandomDense(dims ...int) *tensor.Dense {
 
 	return tensor.New(tensor.WithShape(dims...), tensor.WithBacking(data))
 }
+
+func Byte2Float64(bs []byte) []float64 {
+	ret := []float64{}
+	for _, b := range bs {
+		ret = append(ret, float64(b))
+	}
+	return ret
+}
+
+func Byte2Float64Mat(data [][]byte) [][]float64 {
+	ret := [][]float64{}
+	for _, bs := range data {
+		row := []float64{}
+		for _, b := range bs {
+			row = append(row, float64(b))
+		}
+		ret = append(ret, row)
+	}
+	return ret
+}

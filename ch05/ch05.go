@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"../common"
+	"../dataset"
 	"gorgonia.org/tensor"
 )
 
@@ -170,14 +171,44 @@ func (this *Affine) forward(x *tensor.Dense) *tensor.Dense {
 }
 
 func (this *Affine) backward(dout *tensor.Dense) *tensor.Dense {
+	var err error
 	WT := this.W.Clone().(*tensor.Dense)
-	WT.Transpose()
+	err = WT.T()
+	if err != nil {
+		panic(err)
+	}
 	xT := this.x.Clone().(*tensor.Dense)
-	xT.Transpose()
+	err = xT.T()
+	if err != nil {
+		panic(err)
+	}
 
-	dx, _ := dout.MatMul(WT)
-	this.dW, _ = xT.MatMul(dout)
-	this.db, _ = dout.Sum(0)
+	//checkDense(WT, "WT")
+	//dx, err := dout.MatMul(WT)
+	dx, err := dout.TensorMul(WT, []int{1}, []int{0})
+	if err != nil {
+		fmt.Println("dout:", dout.Info().Shape())
+		fmt.Println("WT:", WT.Info().Shape())
+		fmt.Println("W:", this.W.Info().Shape())
+		panic(err)
+	}
+	/*
+		checkNaN(xT, "xT")
+		fmt.Println(xT)
+		checkNaN(dout, "dout")
+		fmt.Println(dout)
+	*/
+	//this.dW, err = xT.MatMul(dout)
+	this.dW, err = xT.TensorMul(dout, []int{1}, []int{0})
+	if err != nil {
+		panic(err)
+	}
+
+	//checkDense(this.dW, "dW")
+	this.db, err = dout.Sum(0)
+	if err != nil {
+		panic(err)
+	}
 
 	return dx
 }
@@ -199,8 +230,14 @@ func (this *SoftmaxWithLoss) forward(x, t *tensor.Dense) float64 {
 func (this *SoftmaxWithLoss) backward(dout float64) *tensor.Dense {
 	batchSize, _ := this.t.Info().Shape().DimSize(0)
 
-	tmp, _ := this.y.Sub(this.t)
-	dx, _ := tmp.DivScalar(batchSize, true)
+	tmp, err := this.y.Sub(this.t)
+	if err != nil {
+		panic(err)
+	}
+	dx, err := tmp.DivScalar(float64(batchSize), true)
+	if err != nil {
+		panic(err)
+	}
 
 	return dx
 }
@@ -233,18 +270,12 @@ func NewTwoLayerNet(inputSize, hiddenSize, outputSize int, weightInitStd float64
 	ret.b2.Zero()
 
 	// layers
-	ret.layers = []Layer{}
+	ret.layers = []Layer{
+		Layer(NewAffine(ret.W1, ret.b1)),
+		Layer(&Relu{}),
+		Layer(NewAffine(ret.W2, ret.b2)),
+	}
 
-	layer := Layer(NewAffine(ret.W1, ret.b1))
-
-	ret.layers = append(ret.layers, layer)
-
-	/*
-			NewAffine(ret.W1, ret.b1).(*Layer),
-			&Relu{},
-			NewAffine(ret.W2, ret.b2),
-		}
-	*/
 	ret.affine1Idx = 0
 	ret.affine2Idx = 2
 
@@ -305,7 +336,7 @@ func (this *TwoLayerNet) gradient(x, t *tensor.Dense) *TwoLayerNet {
 	this.loss(x, t)
 
 	// backward
-	doutInit := 1.0
+	doutInit := 0.1
 	dout := this.lastLayer.backward(doutInit)
 
 	for i := 0; i < len(this.layers); i++ {
@@ -322,60 +353,118 @@ func (this *TwoLayerNet) gradient(x, t *tensor.Dense) *TwoLayerNet {
 	return grads
 }
 
-func runSigmoid() {
-	dY := tensor.New(tensor.WithShape(2, 3), tensor.WithBacking([]float64{1, 2, 3, 4, 5, 6}))
+func NewTensor(data [][]float64) *tensor.Dense {
+	x := len(data)
+	y := len(data[0])
+	flatData := []float64{}
+	for _, i := range data {
+		flatData = append(flatData, i...)
+	}
+	return tensor.New(tensor.WithShape(x, y), tensor.WithBacking(flatData))
+}
 
-	fmt.Println(dY)
-	fmt.Println(dY.Sum(0))
-	/*
-		T1 := tensor.New(tensor.WithBacking(tensor.Range(tensor.Float32, 0, 9)), tensor.WithShape(3, 3))
+func calDiff(a, b *tensor.Dense) float64 {
+	c, _ := a.Sub(b)
+	n := 0.0
+	sum := 0.0
 
-		d, err := tensor.Exp(T1)
-		if err != nil {
-			panic(err)
+	it := c.Iterator()
+	for !it.Done() {
+		idx, _ := it.Next()
+		n++
+		//fmt.Println(a.Get(idx).(float64), b.Get(idx).(float64), c.Get(idx).(float64))
+		sum += math.Abs(c.Get(idx).(float64))
+	}
+	if sum == 0 {
+		return 0
+	} else {
+		return sum / n
+	}
+}
+
+func checkDense(a *tensor.Dense, msg ...interface{}) {
+	it := a.Iterator()
+	for !it.Done() {
+		i, _ := it.Next()
+		f := a.Get(i).(float64)
+		//if f != 0 { fmt.Println(f) }
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			fmt.Println("------------------------------")
+			fmt.Println(msg...)
+			panic("")
 		}
-		T1 = d.(*tensor.Dense)
-		fmt.Println(T1)
+	}
+}
 
-		T1, err = T1.AddScalar(3.0, true)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(T1)
-	*/
+func numericalGradient() *TwoLayerNet {
+	mnist, _ := dataset.LoadMnist(true, true, true)
 
+	network := NewTwoLayerNet(784, 50, 10, 0.01)
+
+	size := 3
+	xBatch := NewTensor(mnist.TrainImgNormalized[:size])
+	tBatch := NewTensor(common.Byte2Float64Mat(mnist.TrainLabelOneHot[:size]))
+
+	return network.numericalGradient(xBatch, tBatch)
+}
+
+func backProp() *TwoLayerNet {
+	mnist, _ := dataset.LoadMnist(true, true, true)
+
+	network := NewTwoLayerNet(784, 50, 10, 0.01)
+
+	size := 3
+	xBatch := NewTensor(mnist.TrainImgNormalized[:size])
+	tBatch := NewTensor(common.Byte2Float64Mat(mnist.TrainLabelOneHot[:size]))
+
+	return network.gradient(xBatch, tBatch)
+}
+
+func runGradientCheck() {
 	/*
-		//var T1, T3, V *tensor.Dense
-		var T1, T3 *tensor.Dense
-		//var sliced tensor.Tensor
-		T1 = tensor.New(tensor.WithBacking(tensor.Range(tensor.Float32, 0, 9)), tensor.WithShape(3, 3))
-		T3, _ = T1.PowScalar(float32(-1), true)
-		fmt.Printf("Default operation is safe (tensor is left operand)\n==========================\nT3 = T1 ^ 5\nT3:\n%v\nT1 is unchanged:\n%v\n", T3, T1)
+		gradNumerical := numericalGradient()
+		gradBackprop := backProp()
 
-		//T3, _ = T1.PowScalar(float32(5), false)
-		T3, _ = T1.PowScalar(float32(-1), false)
-		fmt.Printf("Default operation is safe (tensor is right operand)\n==========================\nT3 = 5 ^ T1\nT3:\n%v\nT1 is unchanged:\n%v\n", T3, T1)
-
+		fmt.Println(calDiff(gradNumerical.W1, gradBackprop.W1))
+		fmt.Println(calDiff(gradNumerical.b1, gradBackprop.b1))
+		fmt.Println(calDiff(gradNumerical.W2, gradBackprop.W2))
+		fmt.Println(calDiff(gradNumerical.b2, gradBackprop.b2))
 	*/
 
-	/*
-		T1 = New(WithBacking(Range(Float32, 0, 9)), WithShape(3, 3))
-		sliced, _ = T1.Slice(makeRS(0, 2), makeRS(0, 2))
-		V = sliced.(*tensor.Dense)
-		T3, _ = V.PowScalar(float32(5), true)
-		fmt.Printf("Default operation is safe (sliced operations - tensor is left operand)\n=============================================\nT3 = T1[0:2, 0:2] ^ 5\nT3:\n%v\nT1 is unchanged:\n%v\n", T3, T1)
+	mnist, _ := dataset.LoadMnist(true, true, true)
 
-		T1 = New(WithBacking(Range(Float32, 0, 9)), WithShape(3, 3))
-		sliced, _ = T1.Slice(makeRS(0, 2), makeRS(0, 2))
-		V = sliced.(*tensor.Dense)
-		T3, _ = V.PowScalar(float32(5), false)
-		fmt.Printf("Default operation is safe (sliced operations - tensor is right operand)\n=============================================\nT3 = 5 ^ T1[0:2, 0:2]\nT3:\n%v\nT1 is unchanged:\n%v\n", T3, T1)
-	*/
+	network := NewTwoLayerNet(784, 50, 10, 0.01)
+
+	size := 3
+	xBatch := NewTensor(mnist.TrainImgNormalized[:size])
+	tBatch := NewTensor(common.Byte2Float64Mat(mnist.TrainLabelOneHot[:size]))
+
+	gradNumerical := network.numericalGradient(xBatch, tBatch)
+	gradBackprop := network.gradient(xBatch, tBatch)
+
+	fmt.Println(calDiff(gradNumerical.W1, gradBackprop.W1))
+	fmt.Println(calDiff(gradNumerical.b1, gradBackprop.b1))
+	fmt.Println(calDiff(gradNumerical.W2, gradBackprop.W2))
+	fmt.Println(calDiff(gradNumerical.b2, gradBackprop.b2))
+
+}
+
+func runTensor() {
+	a := NewTensor([][]float64{
+		[]float64{11, 12, 13, 14},
+		[]float64{21, 22, 23, 24},
+	})
+
+	fmt.Println(a)
+
+	b := a.T()
+	fmt.Println(a)
+	fmt.Println(b)
 }
 
 func main() {
 	//runMulLayerFloat()
 	//runRelu()
-	runSigmoid()
-	//runLayers()
+	runGradientCheck()
+	//runTensor()
 }
