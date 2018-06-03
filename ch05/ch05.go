@@ -264,9 +264,11 @@ func NewTwoLayerNet(inputSize, hiddenSize, outputSize int, weightInitStd float64
 	ret.W2 = common.RandomDense(hiddenSize, outputSize)
 	ret.b2 = common.RandomDense(outputSize)
 
-	ret.W1, _ = ret.W1.MulScalar(weightInitStd, false)
+	//ret.W1, _ = ret.W1.MulScalar(weightInitStd, false)
+	ret.W1.Zero()
 	ret.b1.Zero()
-	ret.W2, _ = ret.W2.MulScalar(weightInitStd, false)
+	//ret.W2, _ = ret.W2.MulScalar(weightInitStd, false)
+	ret.W2.Zero()
 	ret.b2.Zero()
 
 	// layers
@@ -336,7 +338,7 @@ func (this *TwoLayerNet) gradient(x, t *tensor.Dense) *TwoLayerNet {
 	this.loss(x, t)
 
 	// backward
-	doutInit := 0.1
+	doutInit := 1.0
 	dout := this.lastLayer.backward(doutInit)
 
 	for i := 0; i < len(this.layers); i++ {
@@ -378,6 +380,7 @@ func calDiff(a, b *tensor.Dense) float64 {
 	if sum == 0 {
 		return 0
 	} else {
+		fmt.Println(sum, n)
 		return sum / n
 	}
 }
@@ -446,7 +449,10 @@ func runGradientCheck() {
 	fmt.Println(calDiff(gradNumerical.b1, gradBackprop.b1))
 	fmt.Println(calDiff(gradNumerical.W2, gradBackprop.W2))
 	fmt.Println(calDiff(gradNumerical.b2, gradBackprop.b2))
-
+	fmt.Println(gradNumerical.b2.Data())
+	fmt.Println(gradBackprop.b2.Data())
+	//fmt.Println(gradNumerical.W2)
+	// the implementation of numerical gradient may be broken.
 }
 
 func runTensor() {
