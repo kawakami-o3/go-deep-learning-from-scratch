@@ -165,8 +165,16 @@ func NewAffine(W, b *tensor.Dense) *Affine {
 
 func (this *Affine) forward(x *tensor.Dense) *tensor.Dense {
 	this.x = x
-	out, _ := x.MatMul(this.W)
+	//out, _ := x.MatMul(this.W)
+	out, _ := x.TensorMul(this.W, []int{1}, []int{0})
 	common.AddVector(out, this.b)
+	/*
+		if len(this.b.Data().([]float64)) == 10 {
+			fmt.Println("forward.x:", this.x.Data())
+			fmt.Println("forward.b:", this.b.Data())
+			fmt.Println("forward.o:", out.Data())
+		}
+	*/
 	return out
 }
 
@@ -221,7 +229,7 @@ type SoftmaxWithLoss struct {
 func (this *SoftmaxWithLoss) forward(x, t *tensor.Dense) float64 {
 	this.t = t
 	this.y = common.Softmax(x)
-	this.loss = common.CrossEntropyError(this.y, this.y)
+	this.loss = common.CrossEntropyError(this.y, this.t)
 
 	return this.loss
 }
@@ -264,11 +272,11 @@ func NewTwoLayerNet(inputSize, hiddenSize, outputSize int, weightInitStd float64
 	ret.W2 = common.RandomDense(hiddenSize, outputSize)
 	ret.b2 = common.RandomDense(outputSize)
 
-	//ret.W1, _ = ret.W1.MulScalar(weightInitStd, false)
-	ret.W1.Zero()
+	ret.W1, _ = ret.W1.MulScalar(weightInitStd, false)
+	//ret.W1.Zero()
 	ret.b1.Zero()
-	//ret.W2, _ = ret.W2.MulScalar(weightInitStd, false)
-	ret.W2.Zero()
+	ret.W2, _ = ret.W2.MulScalar(weightInitStd, false)
+	//ret.W2.Zero()
 	ret.b2.Zero()
 
 	// layers
@@ -294,8 +302,13 @@ func (this *TwoLayerNet) predict(x *tensor.Dense) *tensor.Dense {
 }
 
 func (this *TwoLayerNet) loss(x, t *tensor.Dense) float64 {
+	//return this.lastLayer.forward(y, t)
 	y := this.predict(x)
-	return this.lastLayer.forward(y, t)
+	//fmt.Println(y.Data())
+	ret := this.lastLayer.forward(y, t)
+	//fmt.Println(ret)
+	//fmt.Println(t)
+	return ret
 }
 
 func (this *TwoLayerNet) accuracy(x, t *tensor.Dense) float64 {
@@ -321,7 +334,14 @@ func (this *TwoLayerNet) accuracy(x, t *tensor.Dense) float64 {
 
 func (this *TwoLayerNet) numericalGradient(x, t *tensor.Dense) *TwoLayerNet {
 	lossW := func(_ *tensor.Dense) float64 {
-		return this.loss(x, t)
+
+		a := this.loss(x, t)
+		//fmt.Println(a)
+		//fmt.Println(this.b2.Data())
+		//fmt.Println(x.Data())
+		//fmt.Println(t.Data())
+		return a
+		//return this.loss(x, t)
 	}
 
 	grads := &TwoLayerNet{}
@@ -330,6 +350,7 @@ func (this *TwoLayerNet) numericalGradient(x, t *tensor.Dense) *TwoLayerNet {
 	grads.b1 = common.NumericalGradient(lossW, this.b1)
 	grads.W2 = common.NumericalGradient(lossW, this.W2)
 	grads.b2 = common.NumericalGradient(lossW, this.b2)
+
 	return grads
 }
 
@@ -380,7 +401,6 @@ func calDiff(a, b *tensor.Dense) float64 {
 	if sum == 0 {
 		return 0
 	} else {
-		fmt.Println(sum, n)
 		return sum / n
 	}
 }
@@ -424,16 +444,6 @@ func backProp() *TwoLayerNet {
 }
 
 func runGradientCheck() {
-	/*
-		gradNumerical := numericalGradient()
-		gradBackprop := backProp()
-
-		fmt.Println(calDiff(gradNumerical.W1, gradBackprop.W1))
-		fmt.Println(calDiff(gradNumerical.b1, gradBackprop.b1))
-		fmt.Println(calDiff(gradNumerical.W2, gradBackprop.W2))
-		fmt.Println(calDiff(gradNumerical.b2, gradBackprop.b2))
-	*/
-
 	mnist, _ := dataset.LoadMnist(true, true, true)
 
 	network := NewTwoLayerNet(784, 50, 10, 0.01)
@@ -445,14 +455,10 @@ func runGradientCheck() {
 	gradNumerical := network.numericalGradient(xBatch, tBatch)
 	gradBackprop := network.gradient(xBatch, tBatch)
 
-	fmt.Println(calDiff(gradNumerical.W1, gradBackprop.W1))
-	fmt.Println(calDiff(gradNumerical.b1, gradBackprop.b1))
-	fmt.Println(calDiff(gradNumerical.W2, gradBackprop.W2))
-	fmt.Println(calDiff(gradNumerical.b2, gradBackprop.b2))
-	fmt.Println(gradNumerical.b2.Data())
-	fmt.Println(gradBackprop.b2.Data())
-	//fmt.Println(gradNumerical.W2)
-	// the implementation of numerical gradient may be broken.
+	fmt.Println("W1:", calDiff(gradNumerical.W1, gradBackprop.W1))
+	fmt.Println("b1:", calDiff(gradNumerical.b1, gradBackprop.b1))
+	fmt.Println("W2:", calDiff(gradNumerical.W2, gradBackprop.W2))
+	fmt.Println("b2:", calDiff(gradNumerical.b2, gradBackprop.b2))
 }
 
 func runTensor() {
